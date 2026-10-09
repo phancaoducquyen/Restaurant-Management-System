@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Restaurant Menu - Sidebar</title>
+  <style>
+    :root{--bg:#f5f5f5;--card:#fff;--accent:#2a9d8f;--accent2:#457b9d}
+    *{box-sizing:border-box}
+    body {
+      font-family: Arial, sans-serif;
+      background: var(--bg);
+      margin: 0;
+      height: 100vh;
+      display: flex;
+    }
+    /* Sidebar */
+    .sidebar {
+      width: 220px;
+      background: #ffffff;
+      border-right: 1px solid #e6e6e6;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .logo{
+      font-weight:700;
+      font-size:18px;
+      margin-bottom:6px;
+      color:var(--accent2)
+    }
+    .side-btn{
+      display:flex;align-items:center;gap:10px;
+      padding:10px 12px;border-radius:10px;border:none;cursor:pointer;background:#f7f7f7;
+      transition:all .15s;text-align:left;font-size:15px
+    }
+    .side-btn.active{background:linear-gradient(90deg,#e6fffb, #dff7f2);box-shadow:0 1px 0 rgba(0,0,0,0.03)}
+    .side-btn:hover{transform:translateY(-1px)}
+
+    /* Main content */
+    .main {
+      flex:1; padding:20px; overflow:auto;
+    }
+
+    .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+    h1{margin:0;font-size:20px}
+
+    /* Menu grid - vertical portrait cards */
+    .menu-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 20px;
+    }
+    .card {
+      background: var(--card);
+      border-radius: 12px;
+      box-shadow: 0 6px 14px rgba(0,0,0,0.06);
+      overflow: hidden;
+      transition: 0.15s;
+      display:flex;flex-direction:column;height:360px;
+    }
+    .card img {
+      width: 100%; height:180px; object-fit:cover;display:block;
+    }
+    .card-content{padding:12px;flex:1;display:flex;flex-direction:column}
+    .card-title{font-weight:600;margin-bottom:6px}
+    .desc{color:#666;margin-bottom:8px;font-size:13px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
+    .card-price{color:var(--accent);font-weight:700;margin-bottom:8px}
+    .btn-group{margin-top:auto;display:flex;gap:8px}
+    .btn{padding:8px 10px;border-radius:8px;border:none;cursor:pointer}
+    .btn-detail{background:var(--accent2);color:white;flex:1}
+    .btn-order{background:var(--accent);color:white;flex:1}
+
+    /* Panels */
+    .panel{background:#fff;padding:14px;border-radius:10px;box-shadow:0 4px 10px rgba(0,0,0,0.04)}
+    .hidden{display:none}
+
+    /* Status & Payment list */
+    .list-item{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px dashed #eee}
+    .qty{background:#f0f0f0;padding:4px 8px;border-radius:6px;margin-right:8px}
+
+    /* Pay button specific style: shorter and a bit bigger */
+    #payBtn{padding:12px 20px;font-size:16px;border-radius:10px;min-width:120px}
+
+    /* responsive */
+    @media(max-width:800px){
+      .sidebar{display:flex;flex-direction:row;width:100%;border-right:none;border-bottom:1px solid #e6e6e6}
+      body{flex-direction:column}
+      .main{padding:12px}
+    }
+  </style>
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="logo">Nhà Hàng Demo</div>
+    <button class="side-btn active" data-target="menuPanel">🍽️ Menu</button>
+    <button class="side-btn" data-target="statusPanel">📋 Trạng thái món ăn</button>
+    <button class="side-btn" data-target="paymentPanel">💳 Thanh toán</button>
+  </aside>
+
+  <main class="main">
+    <div class="header">
+      <h1>Giao diện Khách Hàng</h1>
+      <div id="cartSummary">Chưa có món</div>
+    </div>
+
+    <!-- Menu panel -->
+    <section id="menuPanel" class="panel">
+      <h2 style="margin-top:0">Menu Món Ăn</h2>
+      <div class="menu-grid" id="menuGrid"></div>
+    </section>
+
+    <!-- Status panel -->
+    <section id="statusPanel" class="panel hidden">
+      <h2 style="margin-top:0">Trạng thái món ăn</h2>
+      <div id="statusList">Chưa có đơn</div>
+      <!-- nút Gửi xuống bếp sẽ được render động -->
+    </section>
+
+    <!-- Payment panel -->
+    <section id="paymentPanel" class="panel hidden">
+      <h2 style="margin-top:0">Thanh toán</h2>
+      <div id="paymentList">Chưa có món</div>
+      <div style="margin-top:12px;display:flex;justify-content:space-between;align-items:center">
+        <div class="font-bold">Tổng: <span id="totalAmount">0 đ</span></div>
+        <button id="payBtn" class="btn btn-order">Thanh toán</button>
+      </div>
+    </section>
+  </main>
+
+  <script>
+/* ---------- Cấu hình ---------- */
+const API_BASE = 'http://127.0.0.1:3000'; // đổi nếu backend host/port khác
+
+/* ---------- DOM refs ---------- */
+const menuGrid = document.getElementById('menuGrid');
+const cartSummary = document.getElementById('cartSummary');
+const statusList = document.getElementById('statusList');
+const paymentList = document.getElementById('paymentList');
+const totalAmount = document.getElementById('totalAmount');
+const payBtn = document.getElementById('payBtn');
+
+/* ---------- State ---------- */
+let menuData = [];
+let cart = []; // mirror of server order items (local until you implement server order)
+let serverOrderId = null;
+
+/* ---------- Helpers ---------- */
+// normalize image path: if backend sent /mnt/data/xxx.png, convert to /static/xxx.png
+function normalizeImagePath(img) {
+  if (!img) return '/static/no-image.png';
+  // if it's already an http url or starts with /static, keep it
+  if (img.startsWith('http://') || img.startsWith('https://') || img.startsWith('/static/')) return img;
+  // if path like /mnt/data/..., return '/static/<basename>'
+  const parts = img.split('/');
+  const base = parts[parts.length - 1];
+  if (base) return '/static/' + base;
+  return '/static/no-image.png';
+}
+
+/* ---------- Load menu from backend API ---------- */
+async function loadMenuFromAPI() {
+  try {
+    const res = await fetch(`${API_BASE}/api/menu-items`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const raw = await res.json();
+    // normalize fields
+    menuData = raw.map(it => ({
+      id: it.id ?? it.menu_item_id ?? it.menuItemId,
+      name: it.name,
+      desc: it.desc ?? it.description ?? '',
+      price: Number(it.price || 0),
+      image: normalizeImagePath(it.image || '')
+    }));
+    renderMenu();
+    // if serverOrderId exists, sync from server (optional)
+    if (serverOrderId) syncOrderFromServer();
+    updateAllViews();
+  } catch (err) {
+    console.error('Lỗi tải menu:', err);
+    alert('Không kết nối được tới server backend! Kiểm tra app_postgres.py đang chạy và CORS.');
+  }
+}
+
+/* ---------- Render menu ---------- */
+function renderMenu() {
+  menuGrid.innerHTML = '';
+  if (!menuData.length) {
+    menuGrid.innerHTML = '<div style="color:#666">Không có món nào.</div>';
+    return;
+  }
+  menuData.forEach(item => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.setAttribute('data-id', item.id);
+    card.innerHTML = `
+      <img src="${item.image}" alt="${item.name}" onerror="this.src='/static/no-image.png'">
+      <div class="card-content">
+        <div class="card-title">${item.name}</div>
+        <div class="desc">${item.desc || ''}</div>
+        <div class="card-price">${item.price.toLocaleString()} đ</div>
+        <div class="btn-group">
+          <button class="btn btn-detail" data-id="${item.id}">Chi tiết</button>
+          <button class="btn btn-order" data-id="${item.id}">Đặt món</button>
+        </div>
+      </div>
+    `;
+    menuGrid.appendChild(card);
+  });
+}
+
+/* ---------- Event delegation for menu buttons ---------- */
+menuGrid.addEventListener('click', e => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  const id = Number(btn.dataset.id);
+  if (btn.classList.contains('btn-order')) {
+    const it = menuData.find(m => m.id === id);
+    if (it) addToCartServer(it);
+  } else if (btn.classList.contains('btn-detail')) {
+    const it = menuData.find(m => m.id === id);
+    if (it) showDetail(it);
+  }
+});
+
+/* ---------- Show detail ---------- */
+function showDetail(it) {
+  alert(`${it.name}\n${it.price.toLocaleString()} đ\n\n${it.desc || ''}`);
+}
+
+/* ---------- Server interactions (order flow) ---------- */
+// createOrderOnServer: nhận object data hoặc tableId number
+async function createOrderOnServer(dataOrTableId = 1) {
+  let bodyData;
+  if (typeof dataOrTableId === 'number') {
+    bodyData = { table_id: dataOrTableId, branch_id: 1 };
+  } else {
+    // nếu truyền object (ví dụ { table_id:1, branch_id:1 })
+    bodyData = dataOrTableId;
+  }
+
+  const res = await fetch(`${API_BASE}/api/orders`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(bodyData)
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error('Không thể tạo order: ' + res.status + ' ' + txt);
+  }
+  const o = await res.json();
+  serverOrderId = o.order_id;
+  return o;
+}
+
+
+async function addItemToServer(orderId, menu_item_id, quantity=1, note='') {
+  const res = await fetch(`${API_BASE}/api/orders/${orderId}/items`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ menu_item_id, quantity, note })
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error('Không thể thêm item: ' + res.status + ' ' + txt);
+  }
+  return await res.json();
+}
+
+async function fetchOrder(orderId) {
+  const res = await fetch(`${API_BASE}/api/orders/${orderId}`);
+  if (!res.ok) throw new Error('Lỗi lấy order: ' + res.status);
+  return await res.json();
+}
+
+async function sendOrderToKitchen(orderId) {
+  const res = await fetch(`${API_BASE}/api/orders/${orderId}`, {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ status: 'SENT' })
+  });
+  if (!res.ok) throw new Error('Gửi bếp thất bại: ' + res.status);
+  return await res.json();
+}
+
+async function syncOrderFromServer() {
+  if (!serverOrderId) return;
+  try {
+    const order = await fetchOrder(serverOrderId);
+    cart = (order.items || []).map(it => ({
+      id: it.menu_item_id,
+      name: it.name,
+      price: it.price,
+      qty: it.quantity,
+      status: it.status || 'NOT_SENT',
+      order_item_id: it.order_item_id
+    }));
+    updateAllViews();
+  } catch (err) {
+    console.error('syncOrderFromServer err', err);
+  }
+}
+
+/* ---------- Add to cart via server ---------- */
+async function addToCartServer(item) {
+  try {
+    // Nếu chưa có order thì tạo mới
+    if (!serverOrderId) {
+      await createOrderOnServer({
+        table_id: 1,
+        branch_id: 1
+      });
+    }
+
+    // Thêm món vào order
+    await addItemToServer(serverOrderId, item.id, 1, '');
+
+    // Đồng bộ trạng thái từ server
+    await syncOrderFromServer();
+
+    // Chuyển sang panel trạng thái
+    activatePanel('statusPanel');
+
+  } catch (err) {
+    console.error(err);
+    alert('Lỗi khi đặt món: ' + err.message);
+  }
+}
+
+
+/* ---------- Render Send to Kitchen button ---------- */
+function displayStatusLabel(status) {
+  switch (status) {
+    case 'NOT_SENT': return 'Chưa gửi';
+    case 'PENDING': return 'Chưa gửi';
+    case 'WAITING': return 'Chờ bếp';
+    case 'PREPARING': return 'Đang nấu';
+    case 'FINISHED': return 'Hoàn thành';
+    default: return status || 'Chờ bếp';
+  }
+}
+
+function renderSendToKitchenButton() {
+  let container = document.getElementById('statusControls');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'statusControls';
+    container.style.marginTop = '8px';
+    document.getElementById('statusPanel').appendChild(container);
+  }
+  container.innerHTML = '';
+  if (!serverOrderId || !cart.length) return;
+  // show button if there is at least one NOT_SENT/PENDING item
+  const hasNotSent = cart.some(c => c.status === 'NOT_SENT' || c.status === 'PENDING');
+  if (hasNotSent) {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-order';
+    btn.textContent = 'Gửi xuống bếp';
+    btn.addEventListener('click', async () => {
+      try {
+        await sendOrderToKitchen(serverOrderId);
+        await syncOrderFromServer();
+        alert('Đã gửi xuống bếp!');
+      } catch (err) {
+        console.error(err);
+        alert('Gửi bếp lỗi: ' + err.message);
+      }
+    });
+    container.appendChild(btn);
+  }
+}
+
+
+/* ---------- Update all views ---------- */
+function updateAllViews() {
+  // cart summary
+  if (!cart.length) cartSummary.textContent = 'Chưa có món';
+  else cartSummary.textContent = `${cart.reduce((s,i)=>s+i.qty,0)} món • ${cart.reduce((s,i)=>s+i.qty*i.price,0).toLocaleString()} đ`;
+
+  // status list
+  if (!cart.length) statusList.textContent = 'Chưa có đơn';
+  else {
+    statusList.innerHTML = '';
+    cart.forEach(c => {
+      const div = document.createElement('div');
+      div.className = 'list-item';
+      div.innerHTML = `<div><span class="qty">${c.qty}</span><strong>${c.name}</strong><div style="font-size:12px;color:#666">${c.price.toLocaleString()} đ</div></div><div style="...">${displayStatusLabel(c.status)}</div>`;
+      statusList.appendChild(div);
+    });
+  }
+
+  // payment list
+  if (!cart.length) paymentList.textContent = 'Chưa có món';
+  else {
+    paymentList.innerHTML = '';
+    cart.forEach(c => {
+      const row = document.createElement('div');
+      row.className = 'list-item';
+      row.innerHTML = `<div><strong>${c.name}</strong><div style="font-size:12px;color:#666">${c.qty} × ${c.price.toLocaleString()} đ</div></div><div>${(c.qty*c.price).toLocaleString()} đ</div>`;
+      paymentList.appendChild(row);
+    });
+  }
+
+  const total = cart.reduce((s,i)=>s+i.qty*i.price,0);
+  totalAmount.textContent = total.toLocaleString() + ' đ';
+
+  renderSendToKitchenButton();
+}
+
+/* ---------- Payment (only if server order COMPLETED) ---------- */
+payBtn.addEventListener('click', async () => {
+  if (!cart.length) { alert('Chưa có món để thanh toán'); return; }
+  if (!serverOrderId) { alert('Order chưa có trên server'); return; }
+  try {
+    const order = await fetchOrder(serverOrderId);
+    if (order.status !== 'COMPLETED' && order.status !== 'PAID') {
+      alert('Chưa thể thanh toán — chờ bếp hoàn tất món (trạng thái hiện tại: ' + (order.status || 'UNKNOWN') + ')');
+      return;
+    }
+    const total = cart.reduce((s,i)=>s+i.qty*i.price,0);
+    const res = await fetch(`${API_BASE}/api/payments`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ order_id: serverOrderId, amount: total, method: 'cash' })
+    });
+    if (!res.ok) throw new Error('Payment fail: ' + res.status);
+    const pay = await res.json();
+    alert('Thanh toán thành công! ID: ' + pay.payment_id);
+    serverOrderId = null;
+    cart = [];
+    updateAllViews();
+    activatePanel('menuPanel');
+  } catch (err) {
+    console.error(err);
+    alert('Lỗi khi thanh toán: ' + err.message);
+  }
+});
+
+/* ---------- Sidebar switching ---------- */
+document.querySelectorAll('.side-btn').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.side-btn').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    activatePanel(b.dataset.target);
+  });
+});
+
+function activatePanel(id) {
+  ['menuPanel','statusPanel','paymentPanel'].forEach(pid => {
+    const el = document.getElementById(pid);
+    if (pid === id) el.classList.remove('hidden'); else el.classList.add('hidden');
+  });
+}
+
+/* ---------- Polling sync (3s) ---------- */
+setInterval(() => {
+  if (serverOrderId) syncOrderFromServer();
+}, 3000);
+
+/* ---------- Init ---------- */
+window.addEventListener('DOMContentLoaded', () => {
+  loadMenuFromAPI();
+  updateAllViews();
+});
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Kitchen - Bếp</title>
+  <style>
+    body{font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:18px}
+    h1{margin:0 0 12px}
+    .panel{background:#fff;padding:12px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.05)}
+    .item{display:flex;justify-content:space-between;align-items:center;padding:10px;border-bottom:1px dashed #eee}
+    .btn{padding:6px 10px;border-radius:8px;border:none;cursor:pointer;margin-left:6px}
+    .btn-prep{background:#f59e0b;color:white}
+    .btn-finish{background:#10b981;color:white}
+    #filter{margin-bottom:10px}
+    .small{font-size:12px;color:#666}
+  </style>
+</head>
+<body>
+  <h1>Giao diện Bếp</h1>
+  <div class="panel">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+      <select id="filter">
+        <option value="">Tất cả</option>
+        <option value="PENDING">PENDING</option>
+        <option value="WAITING">WAITING</option>
+        <option value="PREPARING">PREPARING</option>
+      </select>
+      <button id="refreshBtn" class="btn">Làm mới</button>
+      <div style="margin-left:auto" class="small">Auto-refresh mỗi 3s</div>
+    </div>
+
+    <div id="list"></div>
+  </div>
+
+<script>
+const API_BASE = 'http://127.0.0.1:3000';
+const listEl = document.getElementById('list');
+const filterEl = document.getElementById('filter');
+const refreshBtn = document.getElementById('refreshBtn');
+
+async function loadItems(){
+  try {
+    const status = filterEl.value;
+    const url = status ? `${API_BASE}/api/kitchen/items?status=${encodeURIComponent(status)}` : `${API_BASE}/api/kitchen/items`;
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('Fetch fail ' + res.status);
+    const data = await res.json();
+    renderList(data);
+  } catch(err){
+    console.error(err);
+    listEl.innerHTML = '<div style="color:red">Lỗi tải danh sách: ' + err.message + '</div>';
+  }
+}
+
+function renderList(items){
+  if(!items.length){ listEl.innerHTML = '<div style="color:#666;padding:8px">Không có món cần làm.</div>'; return; }
+  listEl.innerHTML = '';
+  // show item with order id and note
+  items.forEach(it => {
+    const div = document.createElement('div');
+    div.className = 'item';
+    div.innerHTML = `<div><strong>${it.name}</strong> <div class="small">Order #${it.order_id} • x${it.quantity} ${it.note ? '• ' + it.note : ''}</div></div>
+      <div>
+        <button class="btn btn-prep" data-id="${it.order_item_id}">PREPARING</button>
+        <button class="btn btn-finish" data-id="${it.order_item_id}">FINISHED</button>
+      </div>`;
+    listEl.appendChild(div);
+  });
+}
+
+listEl.addEventListener('click', async (e) => {
+  const btn = e.target.closest('button');
+  if(!btn) return;
+  const id = Number(btn.dataset.id);
+  if(btn.classList.contains('btn-prep')){
+    await updateStatus(id, 'PREPARING');
+  } else if(btn.classList.contains('btn-finish')){
+    await updateStatus(id, 'FINISHED');
+  }
+});
+
+async function updateStatus(orderItemId, status){
+  try {
+    const res = await fetch(`${API_BASE}/api/kitchen/items/${orderItemId}/status`, {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ status })
+    });
+    if(!res.ok){
+      const txt = await res.text();
+      throw new Error('Server error ' + res.status + ' ' + txt);
+    }
+    const data = await res.json();
+    console.log('Updated', data);
+    await loadItems();
+  } catch(err){
+    console.error(err);
+    alert('Lỗi cập nhật trạng thái: ' + err.message);
+  }
+}
+
+refreshBtn.addEventListener('click', loadItems);
+filterEl.addEventListener('change', loadItems);
+
+// auto-refresh
+setInterval(loadItems, 3000);
+loadItems();
+
+</script>
+</body>
+</html>
